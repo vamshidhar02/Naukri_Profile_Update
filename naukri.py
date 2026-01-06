@@ -1,449 +1,161 @@
 #! python3
 # -*- coding: utf-8 -*-
-"""Naukri Daily update - Using Chrome"""
+"""
+Naukri Profile Refresh Automation
+Optimized for GitHub Actions (Headless Stealth Mode)
+"""
 
-import io
-import logging
 import os
 import sys
 import time
-from datetime import datetime
-from random import choice, randint
-from string import ascii_uppercase, digits
-
-from pypdf import PdfReader, PdfWriter
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+import logging
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.chrome.service import Service as ChromeService
-import constants
+from selenium.webdriver.support import expected_conditions as EC
 
-# Add folder Path of your resume
-originalResumePath = constants.ORIGINAL_RESUME_PATH
-# Add Path where modified resume should be saved
-modifiedResumePath = constants.MODIFIED_RESUME_PATH
+# Import credentials from your constants.py file
+try:
+    import constants
+    USERNAME = constants.USERNAME
+    PASSWORD = constants.PASSWORD
+    LOGIN_URL = "https://www.naukri.com/nlogin/login"
+    PROFILE_URL = "https://www.naukri.com/mnjuser/profile"
+except ImportError:
+    print("Error: constants.py not found. Please ensure it exists with USERNAME and PASSWORD.")
+    sys.exit(1)
 
-# Update your naukri username and password here before running
-username = constants.USERNAME
-password = constants.PASSWORD
-mob = constants.MOBILE
-
-# False if you dont want to add Random HIDDEN chars to your resume
-updatePDF = False
-
-# If Headless = True, script runs Chrome in headless mode without visible GUI
-headless = False
-
-# ----- No other changes required -----
-
-# Set login URL
-NaukriURL = constants.NAUKRI_LOGIN_URL
-
-logging.basicConfig(
-    level=logging.INFO, filename="naukri.log", format="%(asctime)s    : %(message)s"
-)
-# logging.disable(logging.CRITICAL)
-os.environ["WDM_LOCAL"] = "1"
-os.environ["WDM_LOG_LEVEL"] = "0"
-
+# Logging configuration
+logging.basicConfig(level=logging.INFO, format="%(asctime)s : %(message)s")
 
 def log_msg(message):
-    """Print to console and store to Log"""
     print(message)
     logging.info(message)
 
-
 def catch(error):
-    """Method to catch errors and log error details"""
+    """Logs the error and the line number where it occurred"""
     _, _, exc_tb = sys.exc_info()
-    lineNo = str(exc_tb.tb_lineno)
-    msg = "%s : %s at Line %s." % (type(error), error, lineNo)
-    print(msg)
-    logging.error(msg)
+    line_no = str(exc_tb.tb_lineno) if exc_tb else "Unknown"
+    msg = f"Error: {type(error).__name__} : {error} at Line {line_no}."
+    log_msg(msg)
 
-
-def getObj(locatorType):
-    """This map defines how elements are identified"""
-    map = {
-        "ID": By.ID,
-        "NAME": By.NAME,
-        "XPATH": By.XPATH,
-        "TAG": By.TAG_NAME,
-        "CLASS": By.CLASS_NAME,
-        "CSS": By.CSS_SELECTOR,
-        "LINKTEXT": By.LINK_TEXT,
-    }
-    return map[locatorType.upper()]
-
-
-def GetElement(driver, elementTag, locator="ID"):
-    """Wait max 15 secs for element and then select when it is available"""
-    try:
-
-        def _get_element(_tag, _locator):
-            _by = getObj(_locator)
-            if is_element_present(driver, _by, _tag):
-                return WebDriverWait(driver, 15).until(
-                    lambda d: driver.find_element(_by, _tag)
-                )
-
-        element = _get_element(elementTag, locator.upper())
-        if element:
-            return element
-        else:
-            log_msg("Element not found with %s : %s" % (locator, elementTag))
-            return None
-    except Exception as e:
-        catch(e)
-    return None
-
-
-def is_element_present(driver, how, what):
-    """Returns True if element is present"""
-    try:
-        driver.find_element(by=how, value=what)
-    except NoSuchElementException:
-        return False
-    return True
-
-
-def WaitTillElementPresent(driver, elementTag, locator="ID", timeout=30):
-    """Wait till element present. Default 30 seconds"""
-    result = False
-    driver.implicitly_wait(0)
-    locator = locator.upper()
-
-    for _ in range(timeout):
-        time.sleep(0.99)
-        try:
-            if is_element_present(driver, getObj(locator), elementTag):
-                result = True
-                break
-        except Exception as e:
-            log_msg("Exception when WaitTillElementPresent : %s" % e)
-            pass
-
-    if not result:
-        log_msg("Element not found with %s : %s" % (locator, elementTag))
-    driver.implicitly_wait(3)
-    return result
-
-def Logout(driver):
-    """Logout from Naukri session """
-
-    try:
-        # -------- Drawer Menu XPaths --------
-        drawer_xpaths = [
-            f"//*[contains({ci('@class')}, 'drawer__icon')]",
-            f"//div[contains({ci('@class')}, 'drawer')]"
-        ]
-
-        for xpath in drawer_xpaths:
-            if is_element_present(driver, By.XPATH, xpath):
-                try:
-                    el = GetElement(driver, xpath, locator="XPATH")
-                    if el:
-                        el.click()
-                        time.sleep(1)
-                        log_msg("Drawer menu opened")
-                        break
-                except Exception as e:
-                    log_msg(f"Drawer open failed ({xpath}): {e}")
-                    continue
-
-        # -------- Logout XPaths --------
-        logout_xpaths = [
-            "//a[@data-type='logoutLink']",
-
-            f"//a[contains({ci('@class')}, 'list-cta') and contains({ci('@title')}, 'logout')]",
-            f"//a[contains({ci('@class')}, 'logout')]",
-            f"//a[contains({ci('@href')}, 'logout')]",
-
-            f"//*[contains({ci('text()')}, 'logout')]",
-            f"//*[contains({ci('.')}, 'logout')]",
-        ]
-
-        for xpath in logout_xpaths:
-            if is_element_present(driver, By.XPATH, xpath):
-                try:
-                    el = GetElement(driver, xpath, locator="XPATH")
-                    if el:
-                        driver.execute_script("arguments[0].scrollIntoView(true);", el)
-                        time.sleep(0.5)
-                        el.click()
-                        time.sleep(2)
-                        log_msg("Logout Successful")
-                        return True
-                except Exception as e:
-                    log_msg(f"Logout click failed ({xpath}): {e}")
-                    continue
-
-        log_msg("Logout button not found")
-        return False
-
-    except Exception as e:
-        log_msg(f"Logout error: {e}")
-        return False
-    
-def ci(xpath_part: str) -> str:
-    """
-    Wraps an XPath string in lowercase translate() for case-insensitive matching.
-    Usage:
-        ci("@class") → "translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')"
-        ci("text()") → "translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')"
-    """
-    return f"translate({xpath_part},'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')"
-
-
-def tearDown(driver):
-    try:
-        driver.close()
-        log_msg("Driver Closed Successfully")
-    except Exception as e:
-        catch(e)
-        pass
-
-    try:
-        driver.quit()
-        log_msg("Driver Quit Successfully")
-    except Exception as e:
-        catch(e)
-        pass
-
-
-def randomText():
-    return "".join(choice(ascii_uppercase + digits) for _ in range(randint(1, 5)))
-
-
-def LoadNaukri(headless):
-    """Open Chrome with Human-like headers to avoid Access Denied"""
-
+def load_driver():
+    """Initializes Chrome in Stealth Headless mode for GitHub Actions"""
     options = webdriver.ChromeOptions()
     
-    # Standard Flags
+    # Critical flags for Server/Headless environments
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled") # Hides "Automation" flag
     
-    # This makes the server look like a real Windows PC
+    # Stealth settings to bypass Bot Detection (Access Denied)
+    options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
-
-    # Disable images to save speed and bypass some detections
     options.add_argument("--blink-settings=imagesEnabled=false")
 
     try:
+        # Try standard initialization
         driver = webdriver.Chrome(options=options)
-        
-        # This script further hides the fact that it is a bot
-        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-            "source": """
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                })
-            """
-        })
-        
-    except Exception as e:
+    except Exception:
+        # Fallback using WebDriver Manager if standard fail
         from webdriver_manager.chrome import ChromeDriverManager
-        from selenium.webdriver.chrome.service import Service as ChromeService
         driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
-        
-    log_msg("Google Chrome Launched in Stealth Mode!")
-    driver.get(NaukriURL)
-    time.sleep(5) # Give it extra time to load
+    
+    # Hide the 'navigator.webdriver' flag
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    })
+    
     return driver
 
-def naukriLogin(headless=False):
-    status = False
-    driver = LoadNaukri(headless)
-    
+def naukri_login(driver):
+    """Performs login and bypasses the dashboard directly to the profile"""
     try:
-        # 1. Fill Login
-        driver.find_element(By.ID, "usernameField").send_keys(username)
-        time.sleep(1)
-        driver.find_element(By.ID, "passwordField").send_keys(password)
-        time.sleep(1)
+        driver.get(LOGIN_URL)
+        wait = WebDriverWait(driver, 20)
         
-        # 2. Click Login
+        # Locate and fill credentials
+        user_field = wait.until(EC.presence_of_element_located((By.ID, "usernameField")))
+        user_field.send_keys(USERNAME)
+        
+        pass_field = driver.find_element(By.ID, "passwordField")
+        pass_field.send_keys(PASSWORD)
+        
+        # Click Login
         login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
         login_btn.click()
-        log_msg("Login clicked. Jumping to Profile directly...")
+        log_msg("Login credentials submitted.")
         
-        # 3. THE TRICK: Don't wait for the dashboard. Jump to the profile URL.
-        time.sleep(5) 
-        driver.get("https://www.naukri.com/mnjuser/profile")
+        # Bypassing the dashboard/OTP screens by jumping straight to Profile
+        time.sleep(5)
+        log_msg("Redirecting directly to Profile page to bypass security popups...")
+        driver.get(PROFILE_URL)
         time.sleep(5)
 
-        # 4. Check if we are actually on the profile page
         if "profile" in driver.current_url.lower():
-            log_msg("Successfully bypassed dashboard. On Profile Page!")
-            status = True
+            log_msg("Successfully landed on Profile Page.")
+            return True
         else:
-            log_msg(f"Failed to bypass. Current URL: {driver.current_url}")
+            log_msg(f"Failed to reach Profile. Current URL: {driver.current_url}")
+            return False
             
     except Exception as e:
         catch(e)
-    return (status, driver)
+        return False
 
-
-def UpdateProfile(driver):
+def upload_resume(driver, resume_filename):
+    """Uploads the resume file to trigger the 'Last Updated' timestamp"""
     try:
-        mobXpath = "//*[@name='mobile'] | //*[@id='mob_number']"
-        saveXpath = "//button[@ type='submit'][@value='Save Changes'] | //*[@id='saveBasicDetailsBtn']"
-        view_profile_locator = "//*[contains(@class, 'view-profile')]//a"
-        edit_locator = "(//*[contains(@class, 'icon edit')])[1]"
-        save_confirm = "//*[text()='today' or text()='Today']"
-        close_locator = "//*[contains(@class, 'crossIcon')]"
-
-        WaitTillElementPresent(driver, view_profile_locator, "XPATH", 20)
-        profElement = GetElement(driver, view_profile_locator, locator="XPATH")
-        profElement.click()
-        driver.implicitly_wait(2)
-
-        if WaitTillElementPresent(driver, close_locator, "XPATH", 10):
-            GetElement(driver, close_locator, locator="XPATH").click()
-            time.sleep(2)
-
-        WaitTillElementPresent(driver, edit_locator + " | " + saveXpath, "XPATH", 20)
-        if is_element_present(driver, By.XPATH, edit_locator):
-            editElement = GetElement(driver, edit_locator, locator="XPATH")
-            editElement.click()
-
-            WaitTillElementPresent(driver, mobXpath, "XPATH", 10)
-            mobFieldElement = GetElement(driver, mobXpath, locator="XPATH")
-            if mobFieldElement:
-                mobFieldElement.clear()
-                mobFieldElement.send_keys(mob)
-                driver.implicitly_wait(2)
-                
-            saveFieldElement = GetElement(driver, saveXpath, locator="XPATH")
-            saveFieldElement.send_keys(Keys.ENTER)
-            driver.implicitly_wait(3)
-
-            WaitTillElementPresent(driver, save_confirm, "XPATH", 10)
-            if is_element_present(driver, By.XPATH, save_confirm):
-                log_msg("Profile Update Successful")
-            else:
-                log_msg("Profile Update Failed")
-
-        elif is_element_present(driver, By.XPATH, saveXpath):
-            mobFieldElement = GetElement(driver, mobXpath, locator="XPATH")
-            if mobFieldElement:
-                mobFieldElement.clear()
-                mobFieldElement.send_keys(mob)
-                driver.implicitly_wait(2)
-    
-            saveFieldElement = GetElement(driver, saveXpath, locator="XPATH")
-            saveFieldElement.send_keys(Keys.ENTER)
-            driver.implicitly_wait(3)
-
-            WaitTillElementPresent(driver, "confirmMessage", locator="ID", timeout=10)
-            if is_element_present(driver, By.ID, "confirmMessage"):
-                log_msg("Profile Update Successful")
-            else:
-                log_msg("Profile Update Failed")
-
-        time.sleep(5)
-
+        log_msg(f"Searching for upload field to process {resume_filename}...")
+        
+        # Naukri uses a hidden input[type='file'] for resume updates
+        upload_xpath = "//input[@type='file']"
+        wait = WebDriverWait(driver, 20)
+        
+        upload_element = wait.until(EC.presence_of_element_located((By.XPATH, upload_xpath)))
+        
+        # Convert relative path to absolute path for the OS
+        abs_path = os.path.abspath(resume_filename)
+        upload_element.send_keys(abs_path)
+        
+        log_msg(f"File sent to browser: {abs_path}")
+        
+        # Wait for the upload process to complete (Naukri shows a 'Success' toast)
+        time.sleep(10)
+        log_msg("✅ Profile Refresh Successful! Resume uploaded.")
+        return True
+        
     except Exception as e:
         catch(e)
-
-
-
-def UpdateResume():
-    try:
-        # Random text with random location and size
-        txt = randomText()
-        xloc = randint(700, 1000)  # This ensures that text is 'out of page'
-        fsize = randint(1, 10)
-
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
-        can.setFont("Helvetica", fsize)
-        can.drawString(xloc, 100, txt)
-        can.save()
-
-        packet.seek(0)
-        new_pdf = PdfReader(packet)
-        with open(originalResumePath, "rb") as f:
-            existing_pdf = PdfReader(f)
-            pagecount = len(existing_pdf.pages)
-            print("Found %s pages in PDF" % pagecount)
-
-            output = PdfWriter()
-            # Merging new pdf with last page of existing pdf
-            for pageNum in range(pagecount - 1):
-                output.add_page(existing_pdf.pages[pageNum])
-            page = existing_pdf.pages[pagecount - 1]
-            page.merge_page(new_pdf.pages[0])
-            output.add_page(page)
-
-            # Save the new resume file
-            with open(modifiedResumePath, "wb") as outputStream:
-                output.write(outputStream)
-            print("Saved modified PDF: %s" % modifiedResumePath)
-            return os.path.abspath(modifiedResumePath)
-    except Exception as e:
-        catch(e)
-    return os.path.abspath(originalResumePath)
-
-
-
-def UploadResume(driver, resumePath):
-    try:
-        # Give the profile page a moment to settle
-        time.sleep(5)
-        
-        # This is the hidden input field Naukri uses for file uploads
-        upload_field_xpath = "//input[@type='file']"
-        
-        if WaitTillElementPresent(driver, upload_field_xpath, "XPATH", 20):
-            AttachElement = driver.find_element(By.XPATH, upload_field_xpath)
-            full_path = os.path.abspath(resumePath)
-            AttachElement.send_keys(full_path)
-            log_msg(f"Resume sent to upload field: {full_path}")
-            
-            # Wait for the "Success" toast message
-            time.sleep(10)
-            log_msg("Profile refreshed successfully via Resume Upload!")
-        else:
-            log_msg("Could not find the upload field on the profile page.")
-
+        return False
 
 def main():
-    log_msg("-----Naukri.py Script Run Begin-----")
+    log_msg("----- Naukri.py Script Run Begin -----")
     driver = None
     try:
-        status, driver = naukriLogin(headless)
-        if status:
-            # We are already on the profile page, so we skip UpdateProfile() 
-            # and go straight to the Resume Upload which triggers the 'Freshness'
-            
-            # Use './Resume.pdf' to look in the current GitHub folder
-            resume_file = "./Resume.pdf" 
+        driver = load_driver()
+        
+        if naukri_login(driver):
+            # Define the expected resume filename in the root directory
+            resume_file = "Resume.pdf"
             
             if os.path.exists(resume_file):
-                log_msg("Resume found! Starting upload...")
-                UploadResume(driver, resume_file)
+                upload_resume(driver, resume_file)
             else:
-                log_msg(f"Resume NOT found. Please ensure 'Resume.pdf' is uploaded to your GitHub repo.")
+                log_msg(f"❌ Error: '{resume_file}' not found in the root directory.")
+        else:
+            log_msg("❌ Login flow failed. Check credentials or OTP requirements.")
 
     except Exception as e:
         catch(e)
-
     finally:
-        if driver is not None:
-            tearDown(driver)
-
-    log_msg("-----Naukri.py Script Run Ended-----\n")
-
+        if driver:
+            driver.quit()
+            log_msg("Browser session closed.")
+    log_msg("----- Naukri.py Script Run Ended -----")
 
 if __name__ == "__main__":
     main()
