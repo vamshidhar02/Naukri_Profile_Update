@@ -1,40 +1,32 @@
-name: Naukri Profile Refresh
+name: Naukri Headline Refresh
 
 on:
   schedule:
-    # Runs every 2 hours (approx. 06:00, 08:00, 10:00... IST)
-    - cron: '30 */2 * * *'
-  workflow_dispatch: # Allows you to click "Run workflow" for testing
+    # Runs at 03:30 and 12:30 UTC (9:00 AM and 6:00 PM IST)
+    - cron: '30 3,12 * * *'
+  workflow_dispatch: # Allows manual run
 
 jobs:
-  build:
+  refresh:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Install Chrome and Dependencies
+      - name: Install Chrome and Selenium
         run: |
-          # Install necessary Linux packages for Chrome to run on a server
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
-          
-          # Install Python libraries
           python -m pip install --upgrade pip
-          pip install selenium pypdf reportlab webdriver-manager
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install selenium webdriver-manager
 
-      - name: Run Naukri Automation
+      - name: Run Profile Update
         env:
-          # These must match the names you used in GitHub Settings > Secrets
           NAUKRI_USERNAME: ${{ secrets.NAUKRI_USERNAME }}
           NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
-        run: |
-          # We force the script to run in a way that ignores the 'headless = False' variable in your python script
-          python naukri.py
+        run: python naukri.py
