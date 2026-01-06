@@ -261,62 +261,33 @@ def LoadNaukri(headless):
     return driver
 
 def naukriLogin(headless=False):
-    """Open Chrome browser and Login to Naukri.com"""
     status = False
-    driver = None
-    username_locator = "usernameField"
-    password_locator = "passwordField"
-    login_btn_locator = "//button[@type='submit' and contains(text(), 'Login')]"
+    driver = LoadNaukri(headless)
     
-    # We will check for these elements to confirm login success
-    success_indicators = [
-        "//a[contains(@href, 'mnjuser/profile')]", # Link to profile
-        "//*[contains(@class, 'nI-g_v-profile')]", # Profile section
-        "//div[@id='ff-inventory']",               # Old indicator
-        "//*[text()='Recommended jobs']"           # Dashboard text
-    ]
-
     try:
-        driver = LoadNaukri(headless)
-        log_msg(f"Page Title: {driver.title}")
+        # 1. Fill Login
+        driver.find_element(By.ID, "usernameField").send_keys(username)
+        time.sleep(1)
+        driver.find_element(By.ID, "passwordField").send_keys(password)
+        time.sleep(1)
+        
+        # 2. Click Login
+        login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+        login_btn.click()
+        log_msg("Login clicked. Jumping to Profile directly...")
+        
+        # 3. THE TRICK: Don't wait for the dashboard. Jump to the profile URL.
+        time.sleep(5) 
+        driver.get("https://www.naukri.com/mnjuser/profile")
+        time.sleep(5)
 
-        # Fill Email
-        emailField = GetElement(driver, username_locator, locator="ID")
-        if emailField:
-            emailField.clear()
-            emailField.send_keys(username)
-            time.sleep(randint(1, 2)) # Random delay like a human
-            
-            # Fill Password
-            passField = GetElement(driver, password_locator, locator="ID")
-            passField.clear()
-            passField.send_keys(password)
-            time.sleep(1)
-            
-            # Click Login
-            loginButton = GetElement(driver, login_btn_locator, locator="XPATH")
-            if not loginButton:
-                 # Fallback for different button types
-                 loginButton = driver.find_element(By.CSS_SELECTOR, "button.btn-primary")
-            
-            loginButton.click()
-            log_msg("Login button clicked. Waiting for dashboard...")
-            time.sleep(7) # Give it plenty of time to bypass popups
-
-            # Check if login worked by looking for any success indicator
-            for xpath in success_indicators:
-                if is_element_present(driver, By.XPATH, xpath):
-                    log_msg("Naukri Login Successful!")
-                    status = True
-                    return (status, driver)
-            
-            # If we reach here, it failed. Let's log what we see.
-            log_msg("Could not verify login. Account might need OTP or Captcha.")
-            # Screenshot for debugging (optional in your own time)
-            
+        # 4. Check if we are actually on the profile page
+        if "profile" in driver.current_url.lower():
+            log_msg("Successfully bypassed dashboard. On Profile Page!")
+            status = True
         else:
-            log_msg("Username field not found.")
-
+            log_msg(f"Failed to bypass. Current URL: {driver.current_url}")
+            
     except Exception as e:
         catch(e)
     return (status, driver)
