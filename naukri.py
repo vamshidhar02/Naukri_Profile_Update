@@ -87,32 +87,61 @@ def login_and_jump(driver):
 def update_headline(driver):
     try:
         wait = WebDriverWait(driver, 20)
+        log_msg("Starting headline update process...")
+
+        # 1. Scroll down and up to trigger lazy loading of profile elements
+        driver.execute_script("window.scrollTo(0, 500);")
+        time.sleep(2)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(2)
+
+        # 2. Try multiple XPATHs for the Edit Pencil (Naukri changes these often)
+        edit_selectors = [
+            "//span[contains(@class, 'editIcon')]",
+            "//span[contains(@class, 'icon-edit')]",
+            "//div[contains(@class, 'resume-headline')]//span[contains(@class, 'edit')]",
+            "//em[text()='edit']"
+        ]
         
-        # Click the edit icon for Basic Details
-        edit_pencil = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(@class, 'editIcon')]")))
+        edit_pencil = None
+        for selector in edit_selectors:
+            try:
+                edit_pencil = driver.find_element(By.XPATH, selector)
+                if edit_pencil.is_displayed():
+                    log_msg(f"Found edit button with: {selector}")
+                    break
+            except:
+                continue
+
+        if not edit_pencil:
+            log_msg("❌ Could not find Edit button. Saving screenshot...")
+            driver.save_screenshot("edit_not_found.png")
+            return False
+
+        # 3. Click Edit using JS to be safe
         driver.execute_script("arguments[0].click();", edit_pencil)
         
-        # Update Headline Text
+        # 4. Update Headline Text
         headline_field = wait.until(EC.presence_of_element_located((By.ID, "resumeHeadlineText")))
         current_text = headline_field.get_attribute("value")
         
-        # Toggle a period at the end to force an 'update'
+        # Toggle period
         new_text = current_text[:-1] if current_text.endswith(".") else current_text + "."
         
-        headline_field.clear()
+        # Using JS to set value ensures it works even if field is slightly obscured
+        driver.execute_script("arguments[0].value = '';", headline_field)
         headline_field.send_keys(new_text)
         
-        # Click Save
-        save_btn = driver.find_element(By.XPATH, "//button[text()='Save']")
+        # 5. Click Save
+        save_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Save']")))
         driver.execute_script("arguments[0].click();", save_btn)
         
-        time.sleep(3)
-        log_msg(f"✅ Headline updated to: {new_text}")
+        time.sleep(5)
+        log_msg(f"✅ Profile Freshness Boosted! Headline: {new_text}")
         return True
     except Exception as e:
         log_msg(f"Update Error: {e}")
-        # Take a screenshot on failure to debug via Artifacts
-        driver.save_screenshot("error_screenshot.png")
+        driver.save_screenshot("headline_error.png")
         return False
 
 if __name__ == "__main__":
