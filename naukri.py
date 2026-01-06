@@ -221,37 +221,44 @@ def randomText():
 
 
 def LoadNaukri(headless):
-    """Open Chrome to load Naukri.com"""
+    """Open Chrome with Human-like headers to avoid Access Denied"""
 
     options = webdriver.ChromeOptions()
-    options.add_argument("--disable-notifications")
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-popups")
-    options.add_argument("--disable-gpu")
     
-    # CRITICAL: These flags are required for GitHub Actions
-    options.add_argument("--headless=new") # Modern headless mode
-    options.add_argument("--no-sandbox")   # Required for Linux servers
-    options.add_argument("--disable-dev-shm-usage") # Prevents memory crashes
-    options.add_argument("--window-size=1920,1080") # Simulates a real screen
+    # Standard Flags
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-blink-features=AutomationControlled") # Hides "Automation" flag
+    
+    # This makes the server look like a real Windows PC
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 
-    driver = None
+    # Disable images to save speed and bypass some detections
+    options.add_argument("--blink-settings=imagesEnabled=false")
+
     try:
-        # Use the standard Service and Options
         driver = webdriver.Chrome(options=options)
+        
+        # This script further hides the fact that it is a bot
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                })
+            """
+        })
+        
     except Exception as e:
-        log_msg(f"Primary launch failed, trying fallback: {e}")
-        # Fallback for different Selenium versions
-        from selenium.webdriver.chrome.service import Service as ChromeService
         from webdriver_manager.chrome import ChromeDriverManager
+        from selenium.webdriver.chrome.service import Service as ChromeService
         driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
         
-    log_msg("Google Chrome Launched in Headless Mode!")
-
-    driver.implicitly_wait(5)
+    log_msg("Google Chrome Launched in Stealth Mode!")
     driver.get(NaukriURL)
+    time.sleep(5) # Give it extra time to load
     return driver
-
 
 def naukriLogin(headless=False):
     """Open Chrome browser and Login to Naukri.com"""
