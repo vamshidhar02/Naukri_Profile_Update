@@ -266,57 +266,56 @@ def naukriLogin(headless=False):
     driver = None
     username_locator = "usernameField"
     password_locator = "passwordField"
-    login_btn_locator = "//*[@type='submit' and normalize-space()='Login']"
-    skip_locator = "//*[text() = 'SKIP AND CONTINUE']"
-    close_locator = "//*[contains(@class, 'cross-icon') or @alt='cross-icon']"
+    login_btn_locator = "//button[@type='submit' and contains(text(), 'Login')]"
+    
+    # We will check for these elements to confirm login success
+    success_indicators = [
+        "//a[contains(@href, 'mnjuser/profile')]", # Link to profile
+        "//*[contains(@class, 'nI-g_v-profile')]", # Profile section
+        "//div[@id='ff-inventory']",               # Old indicator
+        "//*[text()='Recommended jobs']"           # Dashboard text
+    ]
 
     try:
         driver = LoadNaukri(headless)
+        log_msg(f"Page Title: {driver.title}")
 
-        log_msg(driver.title)
-        if "naukri.com" in driver.title.lower():
-            log_msg("Website Loaded Successfully.")
-
-        emailFieldElement = None
-        if is_element_present(driver, By.ID, username_locator):
-            emailFieldElement = GetElement(driver, username_locator, locator="ID")
+        # Fill Email
+        emailField = GetElement(driver, username_locator, locator="ID")
+        if emailField:
+            emailField.clear()
+            emailField.send_keys(username)
+            time.sleep(randint(1, 2)) # Random delay like a human
+            
+            # Fill Password
+            passField = GetElement(driver, password_locator, locator="ID")
+            passField.clear()
+            passField.send_keys(password)
             time.sleep(1)
-            passFieldElement = GetElement(driver, password_locator, locator="ID")
-            time.sleep(1)
+            
+            # Click Login
             loginButton = GetElement(driver, login_btn_locator, locator="XPATH")
-        else:
-            log_msg("None of the elements found to login.")
+            if not loginButton:
+                 # Fallback for different button types
+                 loginButton = driver.find_element(By.CSS_SELECTOR, "button.btn-primary")
+            
+            loginButton.click()
+            log_msg("Login button clicked. Waiting for dashboard...")
+            time.sleep(7) # Give it plenty of time to bypass popups
 
-        if emailFieldElement is not None:
-            emailFieldElement.clear()
-            emailFieldElement.send_keys(username)
-            time.sleep(1)
-            passFieldElement.clear()
-            passFieldElement.send_keys(password)
-            time.sleep(1)
-            loginButton.send_keys(Keys.ENTER)
-            time.sleep(3)
-
-            # Added click to Skip button
-            print("Checking Skip button")
-            if WaitTillElementPresent(driver, close_locator, "XPATH", 10):
-                GetElement(driver, close_locator, "XPATH").click()
-            if WaitTillElementPresent(driver, skip_locator, "XPATH", 5):
-                GetElement(driver, skip_locator, "XPATH").click()
-
-            # CheckPoint to verify login
-            if WaitTillElementPresent(driver, "ff-inventory", locator="ID", timeout=40):
-                CheckPoint = GetElement(driver, "ff-inventory", locator="ID")
-                if CheckPoint:
-                    log_msg("Naukri Login Successful")
+            # Check if login worked by looking for any success indicator
+            for xpath in success_indicators:
+                if is_element_present(driver, By.XPATH, xpath):
+                    log_msg("Naukri Login Successful!")
                     status = True
                     return (status, driver)
-                else:
-                    log_msg("Unknown Login Error")
-                    return (status, driver)
-            else:
-                log_msg("Unknown Login Error")
-                return (status, driver)
+            
+            # If we reach here, it failed. Let's log what we see.
+            log_msg("Could not verify login. Account might need OTP or Captcha.")
+            # Screenshot for debugging (optional in your own time)
+            
+        else:
+            log_msg("Username field not found.")
 
     except Exception as e:
         catch(e)
