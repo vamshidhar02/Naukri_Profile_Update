@@ -454,27 +454,24 @@ def main():
     try:
         status, driver = naukriLogin(headless)
         if status:
-            UpdateProfile(driver)
-            if os.path.exists(originalResumePath):
-                if updatePDF:
-                    resumePath = UpdateResume()
-                    UploadResume(driver, resumePath)
-                else:
-                    UploadResume(driver, originalResumePath)
+            # We are already on the profile page, so we skip UpdateProfile() 
+            # and go straight to the Resume Upload which triggers the 'Freshness'
+            
+            # Use './Resume.pdf' to look in the current GitHub folder
+            resume_file = "./Resume.pdf" 
+            
+            if os.path.exists(resume_file):
+                log_msg("Resume found! Starting upload...")
+                UploadResume(driver, resume_file)
             else:
-                log_msg("Resume not found at %s " % originalResumePath)
+                log_msg(f"Resume NOT found. Please ensure 'Resume.pdf' is uploaded to your GitHub repo.")
 
     except Exception as e:
         catch(e)
 
     finally:
         if driver is not None:
-            try:
-                Logout(driver)
-                time.sleep(2)
-            except Exception as e:
-                log_msg("Error during logout: %s" % e)
-        tearDown(driver)
+            tearDown(driver)
 
     log_msg("-----Naukri.py Script Run Ended-----\n")
 
