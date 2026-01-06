@@ -225,21 +225,28 @@ def LoadNaukri(headless):
 
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-notifications")
-    options.add_argument("--start-maximized")  # ("--kiosk") for MAC
+    options.add_argument("--start-maximized")
     options.add_argument("--disable-popups")
     options.add_argument("--disable-gpu")
-    if headless:
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("headless")
+    
+    # CRITICAL: These flags are required for GitHub Actions
+    options.add_argument("--headless=new") # Modern headless mode
+    options.add_argument("--no-sandbox")   # Required for Linux servers
+    options.add_argument("--disable-dev-shm-usage") # Prevents memory crashes
+    options.add_argument("--window-size=1920,1080") # Simulates a real screen
 
-    # updated to use latest selenium Chrome service
     driver = None
     try:
-        driver = webdriver.Chrome(options=options, service=ChromeService())
+        # Use the standard Service and Options
+        driver = webdriver.Chrome(options=options)
     except Exception as e:
-        print(f"Error launching Chrome: {e}")
-        driver = webdriver.Chrome(options)
-    log_msg("Google Chrome Launched!")
+        log_msg(f"Primary launch failed, trying fallback: {e}")
+        # Fallback for different Selenium versions
+        from selenium.webdriver.chrome.service import Service as ChromeService
+        from webdriver_manager.chrome import ChromeDriverManager
+        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+        
+    log_msg("Google Chrome Launched in Headless Mode!")
 
     driver.implicitly_wait(5)
     driver.get(NaukriURL)
