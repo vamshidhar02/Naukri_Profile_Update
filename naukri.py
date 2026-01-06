@@ -107,44 +107,56 @@ def naukri_login(driver):
         return False
 
 def upload_resume(driver, resume_filename):
-    """Uploads the resume using multiple selector fallbacks"""
+    """Scrolls to trigger lazy loading and uses robust detection"""
     try:
         log_msg(f"Searching for upload field to process {resume_filename}...")
         
-        # Try different possible selectors for the upload input
+        # 1. Scroll down to trigger lazy-loaded sections
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(2)
+        
+        # 2. More aggressive list of selectors
+        # Naukri uses 'attachCV' for the input ID or a generic 'file' type
         selectors = [
-            "//input[@type='file']", 
             "//input[@id='attachCV']",
-            "//input[contains(@class, 'file-upload')]"
+            "//input[@type='file']",
+            "//div[@class='upload-resume-container']//input",
+            "//span[contains(text(), 'Update')]/preceding-sibling::input"
         ]
         
         upload_element = None
-        for selector in selectors:
-            try:
-                # Short wait for each attempt
-                upload_element = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, selector))
-                )
-                if upload_element:
-                    break
-            except:
-                continue
+        # Try for up to 30 seconds total
+        for _ in range(3): 
+            for selector in selectors:
+                try:
+                    el = driver.find_element(By.XPATH, selector)
+                    if el:
+                        upload_element = el
+                        break
+                except:
+                    continue
+            if upload_element: break
+            time.sleep(5)
+            log_msg("Retrying upload field detection...")
 
         if upload_element:
             abs_path = os.path.abspath(resume_filename)
-            # Use execute_script to make sure the hidden element is interactable
-            driver.execute_script("arguments[0].style.display = 'block';", upload_element)
+            # Make sure it's interactable
+            driver.execute_script("arguments[0].style.opacity = '1'; arguments[0].style.display = 'block';", upload_element)
             upload_element.send_keys(abs_path)
             
             log_msg(f"File sent: {abs_path}")
-            
-            # CRITICAL: Wait for the 'Success' indicator to ensure it saved
-            time.sleep(15)
-            log_msg("✅ Profile Refresh Successful! Resume uploaded.")
+            time.sleep(15) # Crucial wait for the upload to sync to server
+            log_msg("✅ Profile Refresh Successful!")
             return True
         else:
-            log_msg("❌ Could not find any upload field. Taking a screenshot for debugging...")
-            driver.save_screenshot("error_profile_page.png")
+            log_msg("❌ Could not find field. Taking debug screenshot...")
+            driver.save_screenshot("profile_debug.png")
+            # Log the page source to see what tags actually exist
+            with open("page_source.txt", "w", encoding='utf-8') as f:
+                f.write(driver.page_source)
             return False
             
     except Exception as e:
