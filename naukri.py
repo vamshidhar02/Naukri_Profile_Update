@@ -107,27 +107,46 @@ def naukri_login(driver):
         return False
 
 def upload_resume(driver, resume_filename):
-    """Uploads the resume file to trigger the 'Last Updated' timestamp"""
+    """Uploads the resume using multiple selector fallbacks"""
     try:
         log_msg(f"Searching for upload field to process {resume_filename}...")
         
-        # Naukri uses a hidden input[type='file'] for resume updates
-        upload_xpath = "//input[@type='file']"
-        wait = WebDriverWait(driver, 20)
+        # Try different possible selectors for the upload input
+        selectors = [
+            "//input[@type='file']", 
+            "//input[@id='attachCV']",
+            "//input[contains(@class, 'file-upload')]"
+        ]
         
-        upload_element = wait.until(EC.presence_of_element_located((By.XPATH, upload_xpath)))
-        
-        # Convert relative path to absolute path for the OS
-        abs_path = os.path.abspath(resume_filename)
-        upload_element.send_keys(abs_path)
-        
-        log_msg(f"File sent to browser: {abs_path}")
-        
-        # Wait for the upload process to complete (Naukri shows a 'Success' toast)
-        time.sleep(10)
-        log_msg("✅ Profile Refresh Successful! Resume uploaded.")
-        return True
-        
+        upload_element = None
+        for selector in selectors:
+            try:
+                # Short wait for each attempt
+                upload_element = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, selector))
+                )
+                if upload_element:
+                    break
+            except:
+                continue
+
+        if upload_element:
+            abs_path = os.path.abspath(resume_filename)
+            # Use execute_script to make sure the hidden element is interactable
+            driver.execute_script("arguments[0].style.display = 'block';", upload_element)
+            upload_element.send_keys(abs_path)
+            
+            log_msg(f"File sent: {abs_path}")
+            
+            # CRITICAL: Wait for the 'Success' indicator to ensure it saved
+            time.sleep(15)
+            log_msg("✅ Profile Refresh Successful! Resume uploaded.")
+            return True
+        else:
+            log_msg("❌ Could not find any upload field. Taking a screenshot for debugging...")
+            driver.save_screenshot("error_profile_page.png")
+            return False
+            
     except Exception as e:
         catch(e)
         return False
