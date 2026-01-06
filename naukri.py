@@ -398,54 +398,23 @@ def UpdateResume():
 
 def UploadResume(driver, resumePath):
     try:
-        attachCVID = "attachCV"
-        lazyattachCVID = "lazyAttachCV"
-        uploadCV_btn = "//*[contains(@class, 'upload')]//input[@value='Update resume']"
-        CheckPointXpath = "//*[contains(@class, 'updateOn')]"
-        saveXpath = "//button[@type='button']"
-        close_locator = "//*[contains(@class, 'crossIcon')]"
-
-        driver.get(constants.NAUKRI_PROFILE_URL)
-
-        time.sleep(2)
-        if WaitTillElementPresent(driver, close_locator, "XPATH", 10):
-            GetElement(driver, close_locator, locator="XPATH").click()
-            time.sleep(2)
-
-        if WaitTillElementPresent(driver, lazyattachCVID, locator="ID", timeout=5):
-            AttachElement = GetElement(driver, uploadCV_btn, locator="XPATH")
-            AttachElement.send_keys(os.path.abspath(resumePath))
-
-        if WaitTillElementPresent(driver, attachCVID, locator="ID", timeout=5):
-            AttachElement = GetElement(driver, attachCVID, locator="ID")
-            AttachElement.send_keys(os.path.abspath(resumePath))
-
-        if WaitTillElementPresent(driver, saveXpath, locator="ID", timeout=5):
-            saveElement = GetElement(driver, saveXpath, locator="XPATH")
-            saveElement.click()
-
-        WaitTillElementPresent(driver, CheckPointXpath, locator="XPATH", timeout=30)
-        CheckPoint = GetElement(driver, CheckPointXpath, locator="XPATH")
-        if CheckPoint:
-            LastUpdatedDate = CheckPoint.text
-            todaysDate1 = datetime.today().strftime("%b %d, %Y")
-            todaysDate2 = datetime.today().strftime("%b %#d, %Y")
-            if todaysDate1 in LastUpdatedDate or todaysDate2 in LastUpdatedDate:
-                log_msg(
-                    "Resume Document Upload Successful. Last Updated date = %s"
-                    % LastUpdatedDate
-                )
-            else:
-                log_msg(
-                    "Resume Document Upload failed. Last Updated date = %s"
-                    % LastUpdatedDate
-                )
+        # Give the profile page a moment to settle
+        time.sleep(5)
+        
+        # This is the hidden input field Naukri uses for file uploads
+        upload_field_xpath = "//input[@type='file']"
+        
+        if WaitTillElementPresent(driver, upload_field_xpath, "XPATH", 20):
+            AttachElement = driver.find_element(By.XPATH, upload_field_xpath)
+            full_path = os.path.abspath(resumePath)
+            AttachElement.send_keys(full_path)
+            log_msg(f"Resume sent to upload field: {full_path}")
+            
+            # Wait for the "Success" toast message
+            time.sleep(10)
+            log_msg("Profile refreshed successfully via Resume Upload!")
         else:
-            log_msg("Resume Document Upload failed. Last Updated date not found.")
-
-    except Exception as e:
-        catch(e)
-    time.sleep(2)
+            log_msg("Could not find the upload field on the profile page.")
 
 
 def main():
