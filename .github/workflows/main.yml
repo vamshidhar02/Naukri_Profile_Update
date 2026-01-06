@@ -2,12 +2,10 @@ name: Naukri Profile Refresh
 
 on:
   schedule:
-    # This runs every 2 hours at the 30-minute mark
-    # Equivalent to approx: 06:00, 08:00, 10:00 AM IST...
     - cron: '30 */2 * * *'
   push:
     branches: [ "master", "main" ]
-  workflow_dispatch: # Allows you to run it manually
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -21,16 +19,23 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Setup Chrome
+        # This action ensures a fresh, compatible version of Chrome is installed
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # We force install webdriver-manager to handle the driver mismatch automatically
+          pip install webdriver-manager 
 
       - name: Run Naukri Automation
         env:
-          # This pulls your secrets from GitHub Settings
           NAUKRI_USERNAME: ${{ secrets.NAUKRI_USERNAME }}
           NAUKRI_PASSWORD: ${{ secrets.NAUKRI_PASSWORD }}
         run: |
-          # The script is named naukri.py in this repository
+          # We run the script with a specific flag if the script supports it
           python naukri.py
