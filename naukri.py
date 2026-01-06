@@ -42,25 +42,46 @@ def login_and_jump(driver):
         driver.get(LOGIN_URL)
         wait = WebDriverWait(driver, 20)
         
-        # Fill Credentials
-        wait.until(EC.presence_of_element_located((By.ID, "usernameField"))).send_keys(USERNAME)
-        driver.find_element(By.ID, "passwordField").send_keys(PASSWORD)
+        # 1. Wait for fields
+        user_input = wait.until(EC.presence_of_element_located((By.ID, "usernameField")))
+        pass_input = driver.find_element(By.ID, "passwordField")
         
-        # JS Click Login
+        # 2. CLEAR POPUPS: Remove any overlapping elements using JavaScript
+        # This targets the common 'one-tap' login and cookie banners
+        driver.execute_script("""
+            var elements = document.querySelectorAll('.m-one-tap-container, .modal, .overlay, #cookie_policy_banner');
+            for(var i=0; i<elements.length; i++){
+                elements[i].style.display='none';
+            }
+        """)
+        time.sleep(2)
+
+        # 3. Fill Credentials
+        user_input.clear()
+        user_input.send_keys(USERNAME)
+        pass_input.clear()
+        pass_input.send_keys(PASSWORD)
+        
+        # 4. FORCE CLICK: Use JavaScript to click the button directly
+        # This bypasses the 'not interactable' error entirely
         login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
         driver.execute_script("arguments[0].click();", login_btn)
-        log_msg("Login clicked. Waiting for redirect...")
         
-        time.sleep(7)
+        log_msg("Login forced via JS. Waiting for redirect...")
+        time.sleep(10) # Give it extra time for the security check
+        
         driver.get(PROFILE_URL)
         time.sleep(5)
         
-        if "profile" in driver.current_url:
-            log_msg("Landed on Profile Page.")
+        if "profile" in driver.current_url.lower():
+            log_msg("Successfully reached Profile Page.")
             return True
-        return False
+        else:
+            log_msg(f"Failed to reach profile. Current URL: {driver.current_url}")
+            return False
     except Exception as e:
         log_msg(f"Login Error: {e}")
+        driver.save_screenshot("login_error.png") # Capture what is blocking the button
         return False
 
 def update_headline(driver):
