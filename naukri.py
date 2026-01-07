@@ -86,62 +86,55 @@ def login_and_jump(driver):
 
 def update_headline(driver):
     try:
-        wait = WebDriverWait(driver, 20)
-        log_msg("Starting headline update process...")
+        log_msg("Landed on Profile. Waiting 10s for full page render...")
+        time.sleep(10) # Crucial for React-based pages
 
-        # 1. Scroll down and up to trigger lazy loading of profile elements
-        driver.execute_script("window.scrollTo(0, 500);")
-        time.sleep(2)
-        driver.execute_script("window.scrollTo(0, 0);")
-        time.sleep(2)
+        # 1. Search for ANY 'Edit' button using JavaScript
+        # This is more reliable than XPATH in headless mode
+        edit_btn = driver.execute_script("""
+            var elements = document.querySelectorAll('span, em, div, i');
+            for (var i = 0; i < elements.length; i++) {
+                var txt = elements[i].innerText.toLowerCase();
+                if (txt === 'edit' || elements[i].className.includes('editIcon')) {
+                    elements[i].scrollIntoView();
+                    return elements[i];
+                }
+            }
+            return null;
+        """)
 
-        # 2. Try multiple XPATHs for the Edit Pencil (Naukri changes these often)
-        edit_selectors = [
-            "//span[contains(@class, 'editIcon')]",
-            "//span[contains(@class, 'icon-edit')]",
-            "//div[contains(@class, 'resume-headline')]//span[contains(@class, 'edit')]",
-            "//em[text()='edit']"
-        ]
-        
-        edit_pencil = None
-        for selector in edit_selectors:
-            try:
-                edit_pencil = driver.find_element(By.XPATH, selector)
-                if edit_pencil.is_displayed():
-                    log_msg(f"Found edit button with: {selector}")
-                    break
-            except:
-                continue
-
-        if not edit_pencil:
-            log_msg("❌ Could not find Edit button. Saving screenshot...")
-            driver.save_screenshot("edit_not_found.png")
+        if edit_btn:
+            driver.execute_script("arguments[0].click();", edit_btn)
+            log_msg("Edit button clicked via JS.")
+        else:
+            log_msg("❌ Edit button NOT found. Check the screenshot.")
+            driver.save_screenshot("edit_missing.png")
             return False
 
-        # 3. Click Edit using JS to be safe
-        driver.execute_script("arguments[0].click();", edit_pencil)
+        # 2. Update the actual headline text
+        time.sleep(3)
+        headline_field = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "resumeHeadlineText"))
+        )
         
-        # 4. Update Headline Text
-        headline_field = wait.until(EC.presence_of_element_located((By.ID, "resumeHeadlineText")))
         current_text = headline_field.get_attribute("value")
-        
-        # Toggle period
+        # Toggle period at the end
         new_text = current_text[:-1] if current_text.endswith(".") else current_text + "."
         
-        # Using JS to set value ensures it works even if field is slightly obscured
         driver.execute_script("arguments[0].value = '';", headline_field)
         headline_field.send_keys(new_text)
         
-        # 5. Click Save
-        save_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Save']")))
+        # 3. Click Save
+        save_btn = driver.find_element(By.XPATH, "//button[text()='Save']")
         driver.execute_script("arguments[0].click();", save_btn)
         
         time.sleep(5)
-        log_msg(f"✅ Profile Freshness Boosted! Headline: {new_text}")
+        log_msg(f"✅ SUCCESS! Profile Freshness Updated to: {new_text}")
         return True
+
     except Exception as e:
         log_msg(f"Update Error: {e}")
-        driver.save_screenshot("headline_error.png")
+        driver.save_screenshot("final_error.png")
         return False
 
 if __name__ == "__main__":
